@@ -1,6 +1,5 @@
 import {amount,airportCode,normalDate,type Tour} from "./model";
 // External agency payloads vary; each parser validates its required collection.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Row=Record<string,any>;
 export function parseLion(data:Row):Tour[]{
  if(!Array.isArray(data.SingleGroupList))throw new Error("雄獅回傳格式已變更");

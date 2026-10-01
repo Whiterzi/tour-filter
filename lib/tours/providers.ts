@@ -1,4 +1,3 @@
-import "server-only";
 import type { ProviderInfo } from "./provider-info";
 
 export type Provider = ProviderInfo;

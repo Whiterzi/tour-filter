@@ -3,14 +3,14 @@ import {readFile} from 'node:fs/promises';
 import {createServer} from 'vite';
 import {verifyCola} from './verify-cola.mjs';
 import {verifyResultControls} from './verify-result-controls.mjs';
-const server=await createServer({configFile:false,cacheDir:'node_modules/.vite-tests',plugins:[{name:'test-server-only',resolveId(id){if(id==='server-only')return '\0test-server-only';},load(id){if(id==='\0test-server-only')return 'export {}';}}],server:{middlewareMode:true},appType:'custom'});
+const server=await createServer({configFile:false,cacheDir:'node_modules/.vite-tests',optimizeDeps:{noDiscovery:true,include:[]},server:{middlewareMode:true},appType:'custom'});
 try {
  const m=await server.ssrLoadModule('/lib/tours/model.ts');
  const p=await server.ssrLoadModule('/lib/tours/parsers.ts');
  const h=await server.ssrLoadModule('/lib/tours/html-parsers.ts');
  const {loadSources}=await server.ssrLoadModule('/lib/tours/load.ts');
  const filters=await server.ssrLoadModule('/lib/tours/result-filters.ts');
- const {getProviderDirectory}=await server.ssrLoadModule('/lib/tours/provider-directory.server.ts');
+ const {getProviderDirectory}=await server.ssrLoadModule('/lib/tours/provider-directory.ts');
  const directory=getProviderDirectory();
  assert.equal(directory.length,11);
  assert(directory.every(p=>p.live));assert(!directory.some(p=>p.id==='star'));

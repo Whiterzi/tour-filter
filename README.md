@@ -2,18 +2,42 @@
 
 可重複使用的跨旅行社搜尋頁。搜尋時即時查詢各站，再在同一清單篩選日期、天數、團費上下限、機場、關鍵字、排除目的地與週末。旅行社勾選與條件保存在瀏覽器 localStorage。
 
-## 執行
+## 架構與本機執行
+
+- 前端是 Vite / React 靜態網頁，可放在 GitHub Pages。
+- API 是獨立的 Cloudflare Worker，只在使用者搜尋時向旅行社取資料。
+- 沒有資料庫、D1、R2、定時爬取或會員帳號。搜尋偏好存在瀏覽器 localStorage；API 的五分鐘快取只在記憶體內。
 
 ```sh
 npm ci
-npm run dev
+npm run dev:api # 第一個終端：API，127.0.0.1:8787
+npm run dev     # 第二個終端：網頁，127.0.0.1:5173/tour-filter/
 npm test
 npm run lint
-npx tsc --noEmit
-npm run build
 ```
 
-`POST /api/search` 接受 `{provider, query, page}`。每個來源獨立回應，失敗不影響其他來源。後端固定允許的來源網址；不接受任意 URL。相同查詢在單一執行個體短暫快取五分鐘，不設資料庫或定時收集工作。前端與資料接取分開，純靜態前端可搬到 GitHub Pages，但需要另外的即時查詢後端。
+本機 Vite 將 `/api` 轉送到本機 API。瀏覽器不直接請求旅行社，因此不依賴旅行社開放 CORS。
+
+## 部署
+
+1. 執行 `npx wrangler login`，再執行 `npm run deploy:api`，取得 API 網址。
+2. 在 GitHub repo 的 Settings → Secrets and variables → Actions → Variables 新增 `VITE_API_URL`，填入上一步的 HTTPS 網址（不加 `/api/search`）。此網址是公開設定，不是密鑰。
+3. 在 Settings → Pages 將 Source 設為 **GitHub Actions**。
+4. 執行 **Deploy Pages** workflow。它會測試、建置靜態前端並發布至 GitHub Pages；之後 `main` 更新亦會觸發。
+
+API 設定的 `ALLOWED_ORIGINS` 預設只允許 `https://whiterzi.github.io` 的瀏覽器請求；更換前端網域時需一起更新。CORS 不是登入或存取授權。API 固定可查詢的旅行社，不接受任意 URL，不接受任意 HTTP 方法，也限制請求大小。沒有在前端存放 API token。
+
+單獨建置：
+
+```sh
+# VITE_API_URL 設為實際 API 網址，再執行：
+npm run build
+npm run build:api # 只驗證 Worker 打包，不上線
+```
+
+前端輸出在 `dist/`，只含 HTML、CSS、JavaScript 和圖示。正式建置必須設定 `VITE_API_URL`，未設定時會直接失敗，避免部署出無法搜尋的頁面。API 失敗會保留其他旅行社與已讀的結果。
+
+`POST /api/search` 接受 `{provider, query, page}`。`GET /health` 可檢查 API 存活。每個來源獨立回應，失敗不影響其他來源。
 
 搜尋會自動讀取各來源所有分頁，最多同時讀取四個來源，每個來源循序請求。結果邊讀邊呈現，沒有只取前 100 筆的搜尋上限；畫面每頁顯示 30 筆，可用頁碼切換已載入結果；背景讀取不會重設目前頁碼。可暫停／接續；失敗保留已讀資料與待重試頁碼，不將不完整結果標示為完成。東南僅將官網的 `COM009`（查無資料）視為空地區；其他錯誤仍保留該頁供重試，避免悄悄缺漏。
 
@@ -66,8 +90,8 @@ npm run build
 
 `npm test` 使用 `tests/fixtures/` 中的精簡公開資料樣本，驗證日期、週末、價格、未知機場、額滿、排除地名、重複團期、HTML 結構、翻頁及未完成串流。外站改版時應更新個別 adapter 並重新核對官方資料，不以空陣列掩蓋解析失敗。
 
-`node scripts/verify-public-output.mjs` 在建置後檢查公開資源不含內部研究內容與來源網址；可另傳入已渲染 HTML 的檔案路徑檢查初始頁面。
+`npm test` 另驗證 Pages 與 API 的跨站請求、來源白名單、請求大小及錯誤處理。`node scripts/verify-public-output.mjs` 在建置後檢查前端資源。
 
 頁面提供 feature-detected WebMCP `read_tour_results` 和 `search_tours`，使用同一份畫面狀態與查詢流程。支援的瀏覽器環境目前未提供給本次 UI 測試，因此不宣稱完成 WebMCP 實際呼叫驗證。
 
-此專案包含即時查詢後端，不能僅部署到 GitHub Pages。`.openai/hosting.json` 提供不含專案識別的設定範本，使用 Sites 部署時需設定自己的專案。`research/`、`tmp/`、本機工具狀態與環境檔案均不納入發布原始碼。
+GitHub Pages 僅託管前端，API 需另外部署。`research/`、`tmp/`、本機工具狀態與環境檔案不納入發布原始碼。

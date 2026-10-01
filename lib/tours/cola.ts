@@ -61,7 +61,7 @@ export function parseCola(html: string): Tour[] {
     .map(match => JSON.parse(match[1]) as string).join("");
   const models = new Map<string, unknown>();
   for (const line of chunks.split("\n")) {
-    const match = line.match(/^([\da-f]+):([\[{].*)$/);
+    const match = line.match(/^([\da-f]+):([[{].*)$/);
     if (!match) continue;
     try { models.set(match[1], JSON.parse(match[2])); } catch { /* Truncated models cannot supply a valid result. */ }
   }

@@ -21,6 +21,6 @@ async function walk(directory) {
     else if (/\.(?:js|mjs|json|html|map)$/.test(file)) await inspect(file);
   }
 }
-await walk('dist/client');
+await walk('dist');
 if (process.argv[2]) await inspect(process.argv[2]);
 console.log(`PASS: ${checked} public assets contain no internal review text, sources or ranking labels.`);
