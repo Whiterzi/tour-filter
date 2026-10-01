@@ -1,0 +1,120 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {createServer} from 'vite';
+import {verifyCola} from './verify-cola.mjs';
+import {verifyResultControls} from './verify-result-controls.mjs';
+const server=await createServer({configFile:false,cacheDir:'node_modules/.vite-tests',plugins:[{name:'test-server-only',resolveId(id){if(id==='server-only')return '\0test-server-only';},load(id){if(id==='\0test-server-only')return 'export {}';}}],server:{middlewareMode:true},appType:'custom'});
+try {
+ const m=await server.ssrLoadModule('/lib/tours/model.ts');
+ const p=await server.ssrLoadModule('/lib/tours/parsers.ts');
+ const h=await server.ssrLoadModule('/lib/tours/html-parsers.ts');
+ const {loadSources}=await server.ssrLoadModule('/lib/tours/load.ts');
+ const filters=await server.ssrLoadModule('/lib/tours/result-filters.ts');
+ const {getProviderDirectory}=await server.ssrLoadModule('/lib/tours/provider-directory.server.ts');
+ const directory=getProviderDirectory();
+ assert.equal(directory.length,11);
+ assert(directory.every(p=>p.live));assert(!directory.some(p=>p.id==='star'));
+ assert(directory.find(p=>p.id==='cola').live);
+ assert(directory.every(p=>JSON.stringify(Object.keys(p).sort())===JSON.stringify(['focus','id','live','name','url'])));
+ const sample={id:'test',provider:'test',title:'釜山五日',url:'https://example.com',date:'2026-11-10',days:5,price:15000,airport:'TPE',status:'請洽',available:null};
+ assert(m.matches(sample,m.defaults));
+ assert(filters.excludedFromResults({...sample,title:'玩樂濟州 彩妝一站'},'購物、彩妝'));
+ assert(!filters.excludedFromResults(sample,'彩妝、購物'));
+ assert(!filters.excludedFromResults(sample,''));
+ assert(filters.excludedFromResults({...sample,title:'SPA 渡假'},'ｓｐａ'));
+ assert.deepEqual(m.splitTerms('日本、泰國,日本\n越南\r韓國'),['日本','泰國','日本','越南','韓國']);
+ assert.equal(filters.tourSearchQuery('山富旅遊',{title:'玩樂濟州八大主題５日〈彩妝一站〉-神話世界+藍鼎、水族館'}),'山富旅遊 濟州');
+ assert.equal(filters.tourSearchQuery('雄獅旅遊',{title:'日本東京五日'}),'雄獅旅遊 東京');
+ assert.equal(filters.tourSearchQuery('山富旅遊',{title:'玩樂濟洲島五日'}),'山富旅遊 濟州');
+ assert.equal(filters.tourSearchQuery('旅行社',{title:'度假五日',destination:'芹苴'}),'旅行社 芹苴');
+ assert.equal(filters.tourSearchQuery('旅行社',{title:'未標目的地的行程'}),'旅行社 未標目的地的行程');
+ assert(!m.matches({...sample,date:'2026-11-09'},m.defaults));
+ assert(!m.matches({...sample,price:26001},m.defaults));
+ assert(!m.matches({...sample,price:0},m.defaults));
+ assert(!m.matches({...sample,price:NaN},m.defaults));
+ assert(!m.matches({...sample,airport:'unknown'},m.defaults));
+ assert(!m.matches({...sample,available:false},m.defaults));
+ assert(!m.matches({...sample,title:'下龍灣五日'},m.defaults));
+ assert(m.matches(sample,{...m.defaults,keyword:'日本、韓國'}));
+ assert(!m.matches({...sample,date:'2026-11-16'},m.defaults)); // Monday through Friday
+ assert(m.matches({...sample,date:'2026-11-15'},m.defaults)); // Sunday is included
+ assert.throws(()=>m.validateQuery({...m.defaults,start:'2026-02-30'}));
+ assert.throws(()=>m.validateQuery({...m.defaults,days:NaN}));
+ assert.throws(()=>m.validateQuery({...m.defaults,airport:'__proto__'}));
+ assert.equal(m.dedupe([sample,{...sample}, {...sample,provider:'another'}]).length,2);
+ // Inclusive budget bounds, legacy saved queries, and invalid ranges.
+ assert(m.matches(sample,{...m.defaults,minBudget:15000,budget:15000}));
+ assert(!m.matches(sample,{...m.defaults,minBudget:15001}));
+ const legacy={...m.defaults};delete legacy.minBudget;
+ assert.equal(m.validateQuery(legacy).minBudget,0);
+ for(const minBudget of [-1,NaN,Infinity,26001,null,'100'])assert.throws(()=>m.validateQuery({...m.defaults,minBudget}));
+ // Exercise the production paginator, including pages past the first 100.
+ const pageResult=(id,page,tours,next)=>({provider:id,tours:tours.map(t=>({...sample,provider:id,...t})),next,scanned:tours.length,total:205,fetchedAt:'2026-10-01T00:00:00Z'});
+ let updates={},calls=[];
+ const load=async(fetchPage,extra={})=>loadSources({query:m.defaults,ids:['a'],signal:new AbortController().signal,onUpdate:(id,r)=>{updates[id]=r;},fetchPage,...extra});
+ await load(async(id,q,page)=>{calls.push(page);return pageResult(id,page,Array.from({length:page<3?100:5},(_,i)=>({id:String((page-1)*100+i)})),page<3?page+1:null);});
+ assert.deepEqual(calls,[1,2,3]);assert.equal(updates.a.tours.length,205);assert.equal(updates.a.status,'done');
+ calls=[];
+ await load(async(id,q,page)=>{calls.push(page);return pageResult(id,page,page===2?[]:[{id:'same'}],page<3?page+1:null);});
+ assert.deepEqual(calls,[1,2,3]);assert.equal(updates.a.tours.length,1); // Empty pages with a next pointer are not the end.
+ await load(async(id,q,page)=>{if(page===2)throw new Error('temporary');return pageResult(id,page,[{id:'first'}],2);});
+ assert.equal(updates.a.status,'error');assert.equal(updates.a.next,2);assert.equal(updates.a.tours.length,1);
+ calls=[];
+ await load(async(id,q,page)=>{calls.push(page);return pageResult(id,page,[{id:'second'}],null);},{previous:{...updates}});
+ assert.deepEqual(calls,[2]);assert.equal(updates.a.tours.length,2);assert.equal(updates.a.pages,2);
+ await load(async(id,q,page)=>page===1?pageResult(id,page,[{id:'first'}],2):{...pageResult(id,page,[],null),total:0});
+ assert.equal(updates.a.total,205);assert.equal(updates.a.status,'done');
+ const abort=new AbortController();let lateResponse;
+ const paused=load(async(id,q,page)=>page===1?pageResult(id,page,[{id:'first'}],2):await new Promise(resolve=>{lateResponse=resolve;}),{signal:abort.signal});
+ while(!lateResponse)await new Promise(resolve=>setTimeout(resolve,0));
+ abort.abort();assert.equal(updates.a.status,'paused');assert.equal(updates.a.next,2);
+ lateResponse(pageResult('a',2,[{id:'late'}],null));await paused;
+ assert.equal(updates.a.tours.length,1);assert.equal(updates.a.status,'paused');
+ calls=[];
+ await load(async(id,q,page)=>{calls.push(page);return pageResult(id,page,[{id:'resumed'}],null);},{previous:{...updates}});
+ assert.deepEqual(calls,[2]);assert.equal(updates.a.tours.length,2);
+ await load(async(id,q,page)=>pageResult(id,page,[],page));
+ assert.equal(updates.a.status,'error');assert.equal(updates.a.next,1);
+ let concurrent=0,peak=0;updates={};
+ await load(async(id,q,page)=>{concurrent++;peak=Math.max(peak,concurrent);await new Promise(resolve=>setTimeout(resolve,2));concurrent--;if(id==='bad')throw new Error('fail');return pageResult(id,page,[],null);},{ids:['a','bad','b','c','d'],concurrency:2});
+ assert.equal(peak,2);assert.equal(updates.bad.status,'error');assert(['a','b','c','d'].every(id=>updates[id].status==='done'));
+ const html=await readFile('tests/fixtures/spunk-filter-good.html','utf8');
+ const b=h.parseBegonia(html,'spunk','https://www.4p.com.tw',1);
+ assert.equal(b.next,2);assert.equal(b.tours.length,1);assert(b.tours.every(t=>t.price>0&&t.airport==='TPE'));
+ assert.equal(b.tours[0].price,19900);assert.equal(b.tours[0].date,'2026-11-10');
+ const last=h.parseBegonia(await readFile('tests/fixtures/spunk-last-page.html','utf8'),'spunk','https://www.4p.com.tw',4);
+ assert.equal(last.next,null);assert.equal(last.tours.length,1); // Disabled next link still has an onclick.
+ const g=h.parseGalilee(await readFile('tests/fixtures/galilee-filter.html','utf8'),1);
+ assert.equal(g.tours[0].days,5);assert.equal(g.tours[0].price,73900);assert.equal(g.tours[0].airport,'TPE');
+ assert.equal(h.parseGalilee('END',5).next,null);
+ const phoenix=h.parsePhoenix(await readFile('tests/fixtures/phoenix-direct.html','utf8'),'TPE',1);
+ assert.equal(phoenix.tours[0].price,20900);assert.equal(phoenix.tours[0].date,'2026-11-10');assert.equal(phoenix.next,2);
+ const sun=h.parseSunday(await readFile('tests/fixtures/sunday-search.html','utf8'));
+ assert.equal(sun[0].price,242000);assert.equal(sun[0].days,14);assert.equal(sun[0].available,false);
+ const mi=h.parseMitravel(await readFile('tests/fixtures/mitravel-query.html','utf8'));
+ assert.equal(mi[0].days,13);assert.equal(mi[0].price,214000);assert.equal(mi[0].date,'2026-10-01');
+ const bwt=p.parseBwt(await readFile('tests/fixtures/bwt-sse.txt','utf8'));
+ assert(bwt.length>0);assert(bwt.every(t=>t.url.startsWith('https://www.bwt.com.tw/tour/')));
+ assert.throws(()=>p.parseBwt('event: step1\ndata: {"step":"step1","data":[]}'));
+ assert.throws(()=>h.parseBegonia('<html>Error</html>','spunk','https://www.4p.com.tw',1));
+ const {searchProvider}=await server.ssrLoadModule('/lib/tours/fetch.ts');
+ const originalFetch=globalThis.fetch;const requests=[];let failRegion=false;
+ try {
+  globalThis.fetch=async(url,options)=>{
+   const body=JSON.parse(options.body);requests.push(body.variables);
+   if(failRegion&&body.variables.travelCd==='1C_ALL')return Response.json({data:{getGfgSearchGrup:{error:{msgCode:'TEMP'},data:null}}});
+   return Response.json({data:{getGfgSearchGrup:{error:null,data:{totalSize:body.variables.travelCd==='1A_ALL'?2:1,totalPage:body.variables.travelCd==='1A_ALL'?2:1,grup:[]}}}});
+  };
+  const q={...m.defaults,minBudget:18000};
+  const first=await searchProvider('settour',q,1);
+  assert.equal(requests.length,7);assert.equal(first.next,2);assert.equal(first.total,8);
+  assert(requests.every(v=>v.minPrice===18000&&v.maxPrice===26000));
+  const second=await searchProvider('settour',q,2);
+  assert.equal(requests.length,8);assert.equal(second.next,null);assert.equal(second.total,8);
+  failRegion=true;
+  await assert.rejects(()=>searchProvider('settour',{...q,budget:25999},1),/部分地區/);
+ }finally{globalThis.fetch=originalFetch;}
+ await verifyCola(server);
+ await verifyResultControls(server);
+ console.log('PASS: budget bounds, preference migration, complete pagination, resume, cancellation, source isolation, adapters, filters, Colatour range splitting, airport lanes, country tags and source deselection.');
+} finally {await server.close();}

@@ -1,0 +1,54 @@
+[
+  {
+    "Tour_Code": "NKF111505BR6",
+    "Tour_Name": "探索沖繩～海洋博公園、玉泉洞王國村、北谷町美國村、那霸半日閒五日",
+    "Tour_Date": "2026/11/15",
+    "Tour_Days": 5,
+    "Retail_Price": 24888,
+    "Departure_Airport": "桃園",
+    "Sign_Up": "報名",
+    "Available_Pax": "12",
+    "Region_CodeAndName": "A-07_沖繩、石垣島Club Med、宮古島",
+    "Line_CodeAndName": "A_日本",
+    "Pattern_No": "234567"
+  },
+  {
+    "Tour_Code": "NKF112104CI6",
+    "Tour_Name": "沖繩感謝季～光影水族館、CAVE洞穴探險、琉球名物阿古豬、乙晚溫泉飯店四日",
+    "Tour_Date": "2026/11/21",
+    "Tour_Days": 4,
+    "Retail_Price": 23888,
+    "Departure_Airport": "桃園",
+    "Sign_Up": "候補",
+    "Available_Pax": "1",
+    "Region_CodeAndName": "A-07_沖繩、石垣島Club Med、宮古島",
+    "Line_CodeAndName": "A_日本",
+    "Pattern_No": "243751"
+  },
+  {
+    "Tour_Code": "NFZ111605JX6",
+    "Tour_Name": "【APP限定獨享、日本九州】海之金字塔、湯布院金鱗湖、福岡住兩晚、一日自由活動五日",
+    "Tour_Date": "2026/11/16",
+    "Tour_Days": 5,
+    "Retail_Price": 23888,
+    "Departure_Airport": "桃園",
+    "Sign_Up": "關團",
+    "Available_Pax": "滿",
+    "Region_CodeAndName": "A-06_九州（福岡、長崎、熊本、宮崎、鹿兒島）",
+    "Line_CodeAndName": "A_日本",
+    "Pattern_No": "242267"
+  },
+  {
+    "Tour_Code": "NKF111604BR6B",
+    "Tour_Name": "【APP限定獨享、超值沖繩】美麗海水族館、北谷町美國村、南島風光巡禮、瀨長島屋台村四日",
+    "Tour_Date": "2026/11/16",
+    "Tour_Days": 4,
+    "Retail_Price": 16888,
+    "Departure_Airport": "桃園",
+    "Sign_Up": "APP限定",
+    "Available_Pax": "1",
+    "Region_CodeAndName": "A-07_沖繩、石垣島Club Med、宮古島",
+    "Line_CodeAndName": "A_日本",
+    "Pattern_No": "246142"
+  }
+]
